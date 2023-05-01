@@ -1,6 +1,7 @@
 const { createServer } = require("http");
 const Router = require("./router");
 const ecstatic = require("ecstatic");
+const fs = require("fs");
 
 const router = new Router();
 const defaultHeaders = { "Content-Type": "text/plain" };
@@ -13,7 +14,7 @@ class SkillShareServer {
 
     let fileServer = ecstatic({ root: "./public" });
     this.server = createServer((request, response) => {
-      console.log("server running....", this.talks);
+      console.log("server running....", typeof this.talks);
       let resolved = router.resolve(this, request);
 
       if (resolved) {
@@ -23,7 +24,6 @@ class SkillShareServer {
             return { body: String(error), status: 500 };
           })
           .then(({ body, status = 200, headers = defaultHeaders }) => {
-            console.log("body here", body);
             response.writeHead(status, headers);
             response.end(body);
           });
@@ -57,11 +57,8 @@ router.add("GET", talkPath, async (server, title) => {
 });
 
 router.add("DELETE", talkPath, async (server, title) => {
-  console.log("tit", title, server.talks);
   if (title in server.talks) {
-    console.log("true");
     delete server.talks[title];
-    console.log("st", server.talks);
     server.updated();
   }
   return { status: 204 };
@@ -78,7 +75,6 @@ function readStream(stream) {
 
 router.add("PUT", talkPath, async (server, title, requestObj) => {
   let reqObjBody = await readStream(requestObj);
-  console.log("title", reqObjBody);
   let talk;
   try {
     talk = JSON.parse(reqObjBody);
@@ -136,7 +132,6 @@ SkillShareServer.prototype.talkResponse = function () {
   for (let title of Object.keys(this.talks)) {
     talks.push(this.talks[title]);
   }
-  console.log("talks in talkres", JSON.stringify(talks));
   return {
     body: JSON.stringify(talks),
     headers: {
@@ -156,7 +151,6 @@ router.add("GET", /^\/talks$/, async (server, request) => {
   } else if (!wait) {
     return { status: 304 };
   } else {
-    console.log("wait[1]", wait[1]);
     return server.waitForChanges(Number(wait[1]));
   }
 });
@@ -175,178 +169,30 @@ SkillShareServer.prototype.waitForChanges = function (time) {
 SkillShareServer.prototype.updated = function () {
   this.version++;
   let response = this.talkResponse();
+  fs.writeFileSync(
+    "./public/talks.json",
+    JSON.stringify(response.body, null, 2)
+  );
   this.waiting.forEach((resolve) => resolve(response));
   this.waiting = [];
 };
 
-new SkillShareServer(Object.create(null)).start(8001);
+function initializeData(filePath) {
+  if (fs.existsSync(filePath)) {
+    let rawData = fs.readFileSync(filePath);
+    if (rawData.length) {
+      let parsedData = JSON.parse(JSON.parse(rawData));
 
-// var { createServer } = require("http");
-// var Router = require("./router");
-// var ecstatic = require("ecstatic");
+      const obj = Object.create(null);
+      for (const key in parsedData) {
+        let { title } = parsedData[key];
+        obj[title] = parsedData[key];
+      }
 
-// var router = new Router();
-// var defaultHeaders = { "Content-Type": "text/plain" };
+      return obj;
+    }
+  }
+  return Object.create(null);
+}
 
-// var SkillShareServer = class SkillShareServer {
-//   constructor(talks) {
-//     this.talks = talks;
-//     this.version = 0;
-//     this.waiting = [];
-
-//     let fileServer = ecstatic({ root: "./public" });
-//     this.server = createServer((request, response) => {
-//       let resolved = router.resolve(this, request);
-//       if (resolved) {
-//         resolved
-//           .catch((error) => {
-//             if (error.status != null) return error;
-//             return { body: String(error), status: 500 };
-//           })
-//           .then(({ body, status = 200, headers = defaultHeaders }) => {
-//             response.writeHead(status, headers);
-//             response.end(body);
-//           });
-//       } else {
-//         fileServer(request, response);
-//       }
-//     });
-//   }
-//   start(port) {
-//     this.server.listen(port);
-//   }
-//   stop() {
-//     this.server.close();
-//   }
-// };
-
-// const talkPath = /^\/talks\/([^\/]+)$/;
-
-// router.add("GET", talkPath, async (server, title) => {
-//   if (title in server.talks) {
-//     return {
-//       body: JSON.stringify(server.talks[title]),
-//       headers: { "Content-Type": "application/json" },
-//     };
-//   } else {
-//     return { status: 404, body: `No talk '${title}' found` };
-//   }
-// });
-
-// router.add("DELETE", talkPath, async (server, title) => {
-//   if (title in server.talks) {
-//     delete server.talks[title];
-//     server.updated();
-//   }
-//   return { status: 204 };
-// });
-
-// function readStream(stream) {
-//   return new Promise((resolve, reject) => {
-//     let data = "";
-//     stream.on("error", reject);
-//     stream.on("data", (chunk) => (data += chunk.toString()));
-//     stream.on("end", () => resolve(data));
-//   });
-// }
-
-// router.add("PUT", talkPath, async (server, title, request) => {
-//   let requestBody = await readStream(request);
-//   let talk;
-//   try {
-//     talk = JSON.parse(requestBody);
-//   } catch (_) {
-//     return { status: 400, body: "Invalid JSON" };
-//   }
-
-//   if (
-//     !talk ||
-//     typeof talk.presenter != "string" ||
-//     typeof talk.summary != "string"
-//   ) {
-//     return { status: 400, body: "Bad talk data" };
-//   }
-//   server.talks[title] = {
-//     title,
-//     presenter: talk.presenter,
-//     summary: talk.summary,
-//     comments: [],
-//   };
-//   server.updated();
-//   return { status: 204 };
-// });
-
-// router.add(
-//   "POST",
-//   /^\/talks\/([^\/]+)\/comments$/,
-//   async (server, title, request) => {
-//     let requestBody = await readStream(request);
-//     let comment;
-//     try {
-//       comment = JSON.parse(requestBody);
-//     } catch (_) {
-//       return { status: 400, body: "Invalid JSON" };
-//     }
-
-//     if (
-//       !comment ||
-//       typeof comment.author != "string" ||
-//       typeof comment.message != "string"
-//     ) {
-//       return { status: 400, body: "Bad comment data" };
-//     } else if (title in server.talks) {
-//       server.talks[title].comments.push(comment);
-//       server.updated();
-//       return { status: 204 };
-//     } else {
-//       return { status: 404, body: `No talk '${title}' found` };
-//     }
-//   }
-// );
-
-// SkillShareServer.prototype.talkResponse = function () {
-//   let talks = [];
-//   for (let title of Object.keys(this.talks)) {
-//     talks.push(this.talks[title]);
-//   }
-//   return {
-//     body: JSON.stringify(talks),
-//     headers: {
-//       "Content-Type": "application/json",
-//       ETag: `"${this.version}"`,
-//       "Cache-Control": "no-store",
-//     },
-//   };
-// };
-
-// router.add("GET", /^\/talks$/, async (server, request) => {
-//   let tag = /"(.*)"/.exec(request.headers["if-none-match"]);
-//   let wait = /\bwait=(\d+)/.exec(request.headers["prefer"]);
-//   if (!tag || tag[1] != server.version) {
-//     return server.talkResponse();
-//   } else if (!wait) {
-//     return { status: 304 };
-//   } else {
-//     return server.waitForChanges(Number(wait[1]));
-//   }
-// });
-
-// SkillShareServer.prototype.waitForChanges = function (time) {
-//   return new Promise((resolve) => {
-//     this.waiting.push(resolve);
-//     setTimeout(() => {
-//       if (!this.waiting.includes(resolve)) return;
-//       this.waiting = this.waiting.filter((r) => r != resolve);
-//       resolve({ status: 304 });
-//     }, time * 1000);
-//   });
-// };
-
-// SkillShareServer.prototype.updated = function () {
-//   this.version++;
-//   let response = this.talkResponse();
-//   this.waiting.forEach((resolve) => resolve(response));
-//   this.waiting = [];
-// };
-
-// new SkillShareServer(Object.create(null)).start(8001);
+new SkillShareServer(initializeData("./public/talks.json")).start(8001);
